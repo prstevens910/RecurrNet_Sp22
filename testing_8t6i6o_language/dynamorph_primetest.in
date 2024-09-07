@@ -1,0 +1,127 @@
+set max 14.1
+
+addNet dynamorph-ReLU -i $max -t 5 CONTINUOUS
+addGroup in   65 INPUT SOFT_CLAMP
+addGroup hidI  90 RELU   -BIASED -RESET_ON_EXAMPLE
+addGroup hid  300 RELU   -BIASED -RESET_ON_EXAMPLE
+addGroup hid2I  90 RELU   -BIASED -RESET_ON_EXAMPLE
+addGroup hid2  300 RELU   -BIASED -RESET_ON_EXAMPLE
+addGroup outI  50 RELU   -BIASED -RESET_ON_EXAMPLE
+addGroup out  200 OUTPUT -BIASED -RESET_ON_EXAMPLE
+
+setObj clampStrength 0.99
+
+# unconstrained
+connectGroups bias hidI -mean  -3.0 -range 0.0
+connectGroups bias hid2I -mean  -3.0 -range 0.0
+connectGroups bias outI -mean  -3.0 -range 0.0
+
+# positive weights
+connectGroups in  hid -mean 0.2 -range 0.15
+connectGroups hid hid -mean 0.03 -range 0.02
+connectGroups hid hidI -type pos -mean 0.1 -range 0.04
+connectGroups hid hid2 -mean 0.13 -range 0.9
+connectGroups hid2 hid2 -mean 0.03 -range 0.02
+connectGroups hid2 hid -mean 0.05 -range 0.04
+connectGroups hid2 hid2I -type pos -mean 0.1 -range 0.04
+connectGroups hid2 out -mean 0.13 -range 0.1
+connectGroups out out -mean 0.07 -range 0.05
+connectGroups out outI -type pos -mean 0.3 -range 0.2
+connectGroups out hid2 -mean 0.1 -range 0.1
+setLinkValues min 0.0 -type pos
+
+# negative weights
+connectGroups bias hid    -mean -2.0 -range 0.4
+connectGroups bias hid2   -mean -2.0 -range 0.4
+connectGroups bias out    -mean -2.0 -range 0.4
+connectGroups hidI hid    -type neg -mean -0.4 -range 0.3
+connectGroups hid2I hid2  -type neg -mean -0.5 -range 0.3
+connectGroups outI out    -type neg -mean -0.4 -range 0.3
+setLinkValues max 0.0     -type neg
+
+setObj in.initOutput 0.0
+setObj hidI.initOutput 0.0
+setObj hid.initOutput  0.0
+setObj hid2I.initOutput 0.0
+setObj hid2.initOutput  0.0
+setObj outI.initOutput 0.0
+setObj out.initOutput  0.0
+
+# freeze bias weights
+freezeWeights -type bias
+
+setObj hidI.dtScale 1.3
+setObj hid2I.dtScale 1.3
+setObj outI.dtScale 1.3
+
+
+# loadExamples osenc_2021-01-18_8t6i6oexamples.ex -s 8t6i6otrain -exmode PERMUTE
+# loadExamples osenc_FARNOISE_2021-01-18_8t6i6oexamples.ex -s 8t6i6otrain -exmode PERMUTE -m A
+
+setObj trainGroupCrit   0.1
+
+setObj learningRate          0.05
+setObj randRange             0.5
+setObj targetRadius          0.05
+setObj targetOneRadius       0.2
+# setObj numUpdates         100000
+setObj pseudoExampleFreq     1
+setObj batchSize 2000
+setObj threads 4
+setObj trainGroupCrit 0.5
+# Visualize network
+# setObj unitCellSize 10
+# resetPlot
+# plotRow * n out 50 b 1 n outI 10
+# plotRow 1 f
+# plotRow * n hid 50 b 1 n hidI 10
+# plotRow 1 f
+# plotRow * n in 9 b 1 n bias 1
+
+# drawUnits
+
+# viewUnits
+
+
+proc randEventDuration { event1 minDur1 maxDur1 event2 minDur2 maxDur2 minGrace2 maxGrace2} {
+  # random duration event 1
+  set dur1 [expr $minDur1 + [rand 1.0] * ( $maxDur1 - $minDur1 )]
+  setObj net(0).currentExample.event($event1).minTime $dur1
+  setObj net(0).currentExample.event($event1).maxTime $dur1
+
+  # random duration event 2
+  set dur2 [expr $minDur2 + [rand 1.0] * ( $maxDur2 - $minDur2 )]
+  setObj net(0).currentExample.event($event2).minTime $dur2
+  setObj net(0).currentExample.event($event2).maxTime $dur2
+
+  # added a new variable for event 2 graceTime - this way targets turn on a bit after 
+  set gdur2 [expr $minGrace2 + [rand 1.0] * ( $maxGrace2 - $minGrace2 )]
+  setObj net(0).currentExample.event($event2).graceTime $gdur2
+}
+
+
+# picks random letters to generate nonwords
+# will need to be adjusted if changes to number of letters or position units
+proc randInputs { group } {
+  set nUnits [getObj $group.numUnits]
+  for {set u 0} {$u < $nUnits} {incr u} {
+    setObj $group.unit($u).ext.outWtSum 0
+  }
+  # select nonword length - changed from 2-7 to 4-7
+  set wlen [randInt 4 7]
+  # determine word starting position
+  set first [expr 4-($wlen/2)]
+  # for each letter in word
+  for {set l 0} {$l < $wlen} {incr l} {
+    # select letter
+    set let [randInt 9]
+    # set appropriate unit to 1
+    setObj $group.unit([expr ($first+$l)+(9*$let)]).externalInput 1
+    # HACK: using outWtSum extension field as temp storage for copyInputs
+    # setObj $group.unit([expr ($first+$l)+(9*$let)]).ext.outWtSum 1
+  }
+}
+
+
+resetNet
+
